@@ -8,6 +8,18 @@ pub struct Evaluator {
     registry: Registry,
 }
 
+impl Iterator for Evaluator {
+    type Item = Expr;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if Self::step(&mut self.expr, &mut self.env, &mut self.registry) {
+            Some(self.expr.clone())
+        } else {
+            None
+        }
+    }
+}
+
 impl Evaluator {
     pub fn new(expr: Expr, env: Environment, registry: Registry) -> Self {
         Evaluator {
