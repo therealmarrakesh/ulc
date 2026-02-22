@@ -2,6 +2,7 @@ use crate::expr::Expr;
 use crate::lexer::Lexer;
 use crate::token::Token;
 use std::iter::Peekable;
+use std::rc::Rc;
 
 pub struct Parser<'a> {
     lexer: Peekable<Lexer<'a>>,
@@ -39,9 +40,7 @@ impl<'a> Parser<'a> {
 
                 Expr::Abstraction {
                     parameter: name,
-
-                    // do not forget to wrap the result here in a Box because body expects Box<Node> as a type
-                    body: Box::new(self.parse_expression()),
+                    body: Rc::new(self.parse_expression()),
                 }
             }
             _ => panic!("expected identifier"),
@@ -53,21 +52,18 @@ impl<'a> Parser<'a> {
         // we reassign result in the loop so this needs to be mut
         let mut result = self.parse_atom();
 
-        loop {
-            match self.lexer.peek() {
-                Some(Token::Ident(_)) | Some(Token::LParen) | Some(Token::Lambda) => {
-                    let right = match self.lexer.peek() {
-                        Some(Token::Lambda) => self.parse_expression(),
-                        _ => self.parse_atom(),
-                    };
+        while let Some(Token::Ident(_)) | Some(Token::LParen) | Some(Token::Lambda) =
+            self.lexer.peek()
+        {
+            let right = match self.lexer.peek() {
+                Some(Token::Lambda) => self.parse_expression(),
+                _ => self.parse_atom(),
+            };
 
-                    result = Expr::Application {
-                        left: Box::new(result),
-                        right: Box::new(right),
-                    };
-                }
-                _ => break,
-            }
+            result = Expr::Application {
+                left: Rc::new(result),
+                right: Rc::new(right),
+            };
         }
 
         result

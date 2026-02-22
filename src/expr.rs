@@ -1,10 +1,10 @@
-use std::{collections::HashSet, fmt};
+use std::{collections::HashSet, fmt, rc::Rc};
 
 #[derive(Clone, Debug)]
 pub enum Expr {
     Variable { name: String },
-    Abstraction { parameter: String, body: Box<Expr> },
-    Application { left: Box<Expr>, right: Box<Expr> },
+    Abstraction { parameter: String, body: Rc<Expr> },
+    Application { left: Rc<Expr>, right: Rc<Expr> },
 }
 
 impl Expr {
@@ -17,12 +17,12 @@ impl Expr {
             }
             Expr::Abstraction { parameter, body } => {
                 if parameter != old {
-                    body.rename(old, new);
+                    Rc::make_mut(body).rename(old, new);
                 }
             }
             Expr::Application { left, right } => {
-                left.rename(old, new);
-                right.rename(old, new);
+                Rc::make_mut(left).rename(old, new);
+                Rc::make_mut(right).rename(old, new);
             }
         }
     }
@@ -43,6 +43,18 @@ impl Expr {
                 let mut set = left.collect_names();
                 set.extend(right.collect_names());
                 set
+            }
+        }
+    }
+
+    pub fn contains_free(&self, target: &str) -> bool {
+        match self {
+            Expr::Variable { name } => name == target,
+            Expr::Abstraction { parameter, body } => {
+                parameter != target && body.contains_free(target)
+            }
+            Expr::Application { left, right } => {
+                left.contains_free(target) || right.contains_free(target)
             }
         }
     }

@@ -1,6 +1,7 @@
 use crate::environment::Environment;
 use crate::expr::Expr;
 use crate::registry::Registry;
+use std::rc::Rc;
 
 pub struct Evaluator {
     expr: Expr,
@@ -37,6 +38,24 @@ impl Evaluator {
         }
     }
 
+    fn avoid_capture(body: &mut Expr, arg: &Expr, registry: &mut Registry) {
+        match body {
+            Expr::Abstraction { parameter, body } => {
+                if arg.contains_free(parameter) {
+                    let fresh = registry.fresh_name(parameter);
+                    Rc::make_mut(body).rename(parameter, &fresh);
+                    *parameter = fresh;
+                }
+                Self::avoid_capture(Rc::make_mut(body), arg, registry);
+            }
+            Expr::Application { left, right } => {
+                Self::avoid_capture(Rc::make_mut(left), arg, registry);
+                Self::avoid_capture(Rc::make_mut(right), arg, registry);
+            }
+            Expr::Variable { .. } => {}
+        }
+    }
+
     fn step(expr: &mut Expr, env: &mut Environment, registry: &mut Registry) -> bool {
         if let Expr::Application { .. } = expr {
             // take ownership of the Application node
@@ -48,20 +67,28 @@ impl Evaluator {
             );
 
             if let Expr::Application { left, right } = owned {
-                if let Expr::Abstraction {
-                    parameter,
-                    mut body,
-                } = *left
-                {
-                    //generate fresh name and store the argument in the environment
+                // peek without consuming — Rc can't move out with *left
+                if let Expr::Abstraction { .. } = left.as_ref() {
+                    let Expr::Abstraction {
+                        parameter,
+                        mut body,
+                    } = Rc::unwrap_or_clone(left)
+                    else {
+                        unreachable!()
+                    };
+
+                    // alpha-rename inner binders that would capture free variables in the argument
+                    Self::avoid_capture(Rc::make_mut(&mut body), right.as_ref(), registry);
+
+                    // generate fresh name and store the argument in the environment
                     let fresh = registry.fresh_name(&parameter);
-                    env.insert(fresh.clone(), *right);
+                    env.insert(fresh.clone(), right);
 
                     // rename the parameter to the fresh name in the body
-                    body.rename(&parameter, &fresh);
+                    Rc::make_mut(&mut body).rename(&parameter, &fresh);
 
-                    //write the modified body back into expr
-                    *expr = *body;
+                    // write the modified body back into expr
+                    *expr = Rc::unwrap_or_clone(body);
                     return true;
                 }
 
@@ -73,9 +100,10 @@ impl Evaluator {
         // Normal order reduction (leftmost-outermost)
         match expr {
             Expr::Application { left, right } => {
-                Self::step(left, env, registry) || Self::step(right, env, registry)
+                Self::step(Rc::make_mut(left), env, registry)
+                    || Self::step(Rc::make_mut(right), env, registry)
             }
-            Expr::Abstraction { body, .. } => Self::step(body, env, registry),
+            Expr::Abstraction { body, .. } => Self::step(Rc::make_mut(body), env, registry),
             Expr::Variable { name } => {
                 if let Some(term) = env.get(name) {
                     *expr = term;
