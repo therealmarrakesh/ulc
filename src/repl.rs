@@ -45,29 +45,36 @@ pub fn repl() {
 fn evaluate(input: &str, mode: &ReplMode) {
     let lexer = Lexer::new(input);
     let mut parser = Parser::new(lexer);
-    let expr = parser.parse_expression();
-    let initial = expr.clone();
-    let env = Environment::new();
-    let registry = Registry::new(&expr);
-    let evaluator = Evaluator::new(expr, env, registry);
 
-    match mode {
-        ReplMode::Normal => {
-            let result = evaluator.last().unwrap_or(initial);
-            println!("  -> {}\n", result);
-        }
-        ReplMode::Trace => {
-            let mut last_step = None;
-            for step in evaluator {
-                if let Some(prev) = last_step {
-                    println!("  -> {}", prev);
+    match parser.parse() {
+        Ok(expr) => {
+            let initial = expr.clone();
+            let env = Environment::new();
+            let registry = Registry::new(&expr);
+            let evaluator = Evaluator::new(expr, env, registry);
+
+            match mode {
+                ReplMode::Normal => {
+                    let result = evaluator.last().unwrap_or(initial);
+                    println!("  -> {}\n", result);
                 }
-                last_step = Some(step);
+                ReplMode::Trace => {
+                    let mut last_step = None;
+                    for step in evaluator {
+                        if let Some(prev) = last_step {
+                            println!("  -> {}", prev);
+                        }
+                        last_step = Some(step);
+                    }
+                    match last_step {
+                        Some(final_expr) => println!("  -> {}\n", final_expr),
+                        None => println!("  -> {}\n", initial),
+                    }
+                }
             }
-            match last_step {
-                Some(final_expr) => println!("  -> {}\n", final_expr),
-                None => println!("  -> {}\n", initial),
-            }
+        }
+        Err(e) => {
+            println!("  Parse Error: {}\n", e);
         }
     }
 }

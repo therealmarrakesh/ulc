@@ -1,4 +1,5 @@
 pub mod environment;
+pub mod error;
 pub mod evaluator;
 pub mod expr;
 pub mod lexer;
